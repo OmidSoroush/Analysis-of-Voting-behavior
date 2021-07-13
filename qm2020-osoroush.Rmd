@@ -1,0 +1,1816 @@
+---
+title: "Spatial Voting in US Presidential Election"
+author: "Omid Soroush"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  bookdown::pdf_document2: 
+    toc: false
+  html_document: default
+  pdf_document: default
+documentclass: article
+classoption: a4paper
+subtitle: 'Quantitative Methods 2020: Final Data Essay'
+keywords:
+  - key
+  - dictionary
+  - word
+linestretch: 1.5
+geometry: "left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm"
+---
+
+```{r setup, include=FALSE}
+# The first line sets an option for the final document that can be produced from
+# the .Rmd file. Don't worry about it.
+knitr::opts_chunk$set(echo = TRUE)
+
+
+# The next bit is quite powerful and useful. 
+# First you define which packages you need for your analysis and assign it to 
+# the p_needed object. 
+p_needed <-
+  c("haven", "tidyverse", "stargazer", "MASS", "viridis", "broom", "sjlabelled", "knitr", "ggthemes", "ggpubr", "tinytex")
+
+# Now you check which packages are already installed on your computer.
+# The function installed.packages() returns a vector with all the installed 
+# packages.
+packages <- rownames(installed.packages())
+# Then you check which of the packages you need are not installed on your 
+# computer yet. Essentially you compare the vector p_needed with the vector
+# packages. The result of this comparison is assigned to p_to_install.
+p_to_install <- p_needed[!(p_needed %in% packages)]
+# If at least one element is in p_to_install you then install those missing
+# packages.
+if (length(p_to_install) > 0) {
+  install.packages(p_to_install)
+}
+# Now that all packages are installed on the computer, you can load them for
+# this project. Additionally the expression returns whether the packages were
+# successfully loaded.
+sapply(p_needed, require, character.only = TRUE)
+
+# This is an option for stargazer tables
+# It automatically adapts the output to html or latex,
+# depending on whether we want a html or pdf file
+stargazer_opt <- ifelse(knitr::is_latex_output(), "latex", "html")
+```
+
+
+# Introduction
+Three main theories try to explain the voting behavior of citizens based on different factors: first, the sociological model of voting behavior thinks of voting behavior as group behavior. For the proponents of this theory, long-term effects of voting such as group-membership and identity are very important (Paul F. Lazarsfeld, und Lipset & Rokkan). Second, the Rational-Choice-Theory assumes that voters are utility maximizers, and vote for the party or candidate which brings them the maximum utility (Anthony Downs 1957). Short-term effects are considered to be decisive. Finally, the psychological theory of voting combines both long-term and short-term effects, and states that voters behavior is affected by long-term effects such party identification and short-term effects such as candidates evaluation and issue-orientation. Current study builds up on the assumptions of the last theory. 
+
+This paper focuses on proximity voting which is one of the most famous theories of voting. Spatial or proximity voting is the idea that candidates and voters have positions in a policy space and that these positions determine the voter’s preferences. This means that voters decide based the the principle of smallest distance between their preferred position regarding a policy and the position of the existing parties in an election. In other words a voter compares his position with the position of all the parties regarding the important issues, and at the end votes for the party which is nearest to him. The current paper seeks to empirically analyze the following two hypotheses derived from the spatial voting assumption: 
+
+***H1:** party identification moderates the effect of ideological self-placement: the expected relationship that the more Republican (more liberal) voters' ideological views, the higher their probability of voting for the Republican (Democrat) candidate is stronger for independents than it is for either Democrats or Republicans.*
+
+***H2:** the effect of ideological self-placement has a "pure" spatial effect among the highly informed independents: on average, members of this group are indifferent between the two presidential candidates when positioned exactly at the midpoint of the candidates' average perceived positions.*
+
+
+```{r load data, include=FALSE}
+# set the working directory (please adjust)
+setwd("~/Omid")
+
+# load data
+dat <- read_dta("anes08_data_essay.dta")
+#head(dat)
+```
+
+
+# Data and description
+Data from the 2008 US presidential election are used to test these arguments. The data come from the post-election wave of the *American National Study 2008* (ANES 2008). The dependent variable is vote choice coded 1 for Obama, and 0 for McCain. To test the first hypothesis, Voters' ideological self-placement is used as the main independent variable. It runs from 1 (liberal) to 7 (Republican). Party identification is used as the moderator of the effect of ideology on the vote choice. It distinguishes between Democrats, Independents, and Republicans. The model for the first hypothesis controls for respondents' race and income. Race distinguishes between White, Black/African-American, and Mixed. Income is coded 1 if a respondent's family income is above the national median income; and coded 0 otherwise. To test the Second hypothesis, in addition to voter's ideological self-placement as main independent variable, I use respondents' political knowledge as the moderator of the effect of ideology on vote choice. Political knowledge is coded 1 if a respondent correctly identified the majority parties in US House of Representatives and Senate prior to the election; coded 0 otherwise. Next, summary statistics of the above mentioned variables and some more characteristics are presented to get a better idea of the distribution of respondents in this sample.
+
+
+```{r descriptive, echo=FALSE, results='asis'}
+#sum(is.na(dat))
+
+## select continuous variables of interest for EDA
+vars <- subset(dat, select = c(lib_con_self, lib_con_obama, lib_con_mccain,
+                               like_obama, like_mccain, age))
+
+# define multi-function  for summary statistic
+multi_fun <- function(x) {
+  c(Mean = round(mean(x, na.rm = T),2),
+    Median = median(x, na.rm = T),
+    St.dev = round(sd(x, na.rm = T),2),
+    Min = min(x, na.rm = T),
+    Max = max(x, na.rm = T),
+    CI_95 = paste(round(mean(x, na.rm = T) + qnorm(0.025, 0, 1) * (sd(x, na.rm = T) / sqrt(length(x))),2),
+           round(mean(x, na.rm = T) + qnorm(0.975, 0, 1) * (sd(x, na.rm = T) / sqrt(length(x))),2), sep = " - "))
+}
+
+# new column names 
+colnames(vars) <- c("Self-placement", "Obama's placement", "McCain's Placement",
+                    "Like Obama", "Like McCain", "Age")
+# use the multi_fun with apply
+des_stats <- apply(vars, 2, multi_fun)
+des_stats <- t(des_stats)
+
+kable(des_stats, format = "pipe", caption = "Summary Statistics")
+```
+
+Table \@ref(tab:descriptive) summarizes the distribution of the continuous variables in the sample. Respondents' age ranges from 17 to 90 years old. The average ideological self-placement is 4.15. While Obama is on average positioned at 3.1 on the left-right scale, McCain is positioned at 5.1 on this scale. It is worth noting that Obama is much more popular among the respondents than McCain.
+
+Figure \@ref(fig:single-plot333) shows the distribution of ideology for respondents as well as for both candidates. Respondents have a more evenly distributed ideology than the two candidates. While Obama is commonly placed at 2 by a large number of respondents, McCain is positioned at 6 on the scale from 1 to 7.
+
+```{r single-plot333, echo=FALSE, dpi=300, fig.align='center', fig.cap='Distribution of ideology', fig.height=3, fig.width=6.5}
+# EDA
+#remove missing values only for the three ideology columns
+dat2 <- dat[,c("lib_con_self", "lib_con_obama", "lib_con_mccain")]
+dat2 <- dat2[complete.cases(dat2),]
+
+## self-placement
+p8 <- dat2 %>% 
+  ggplot(aes(x=lib_con_self)) + 
+  geom_histogram(bins = 7,fill = '#00ff00', col = "white")+
+  xlab("Ideological self-placement") +
+  ylab("") +
+  ylim(0,500) +
+  theme_minimal()
+
+## placement for Obama
+p9 <- dat2 %>% 
+  ggplot(aes(x=lib_con_obama)) + 
+  geom_histogram(bins = 7,fill = '#00ff00', col = "white")  +
+  xlab("Ideological placement Obama") +
+  ylab("") +
+  ylim(0,500) +
+  theme_minimal()
+
+## placement for Mccain
+p10 <- dat2 %>% 
+  ggplot(aes(x=lib_con_mccain)) + 
+  geom_histogram(bins = 7,fill = '#00ff00', col = "white")  +
+  xlab("Ideological placement McCain") +
+  ylab("") +
+  ylim(0,500) +
+  theme_minimal()
+
+ggarrange(p8, p9, p10, ncol = 3, nrow = 1, labels = c("A", "B", "C"))
+```
+
+
+Next, Figure \@ref(fig:single-plot1) shows the distribution of categorical features. Obama has a greater vote share in this sample than McCain. Females are more than males and respondents without college degree are more than those with college degree.
+
+Figure \@ref(fig:single-plot2) shows the distribution of vote over gender, political knowledge, race and party identification. Plot A shows that females voted more for Obama and males for McCain. Similarly, politically knowledgeable people cast their ballots more in favor of Obama than McCain. As expected, Democrats supported Obama; and Republicans McCain. Independents seems to have supported both equally. Distribution of votes over race (Plot D) is interesting. Whites tend to disproportionately support McCain, while Blacks favored Obama.
+
+
+```{r single-plot1, echo = FALSE, dpi=300, fig.width=5.5, fig.height=3, out.width='75%', fig.align='center', fig.cap='Distribution of categorical features'}
+# subsetting the data
+tbl <- subset(dat, select = c(obama, male, age, college_degree, race, party_id, above_median_inc, pol_knowledge))
+
+# drop missings for these variables
+tbl <- tbl[complete.cases(tbl),]
+
+tbl <- tbl %>%
+  mutate(gender_factor = factor(male, 
+                                   levels = 0:1, 
+                                   labels = c("Female", "Male")),
+         race_factor = factor(race,
+                              levels = 1:3,
+                              labels = c("White", "Black/Afro-American", "Other/Mixed")),
+         vote_factor   = factor(obama, 
+                                   levels = 0:1, 
+                                   labels = c("McCain", "Obama")),
+         inc_factor   = factor(above_median_inc, 
+                                   levels = 0:1, 
+                                   labels = c("Above median income", "Under median income")),
+         party_factor = factor(party_id,
+                               levels = 1:3,
+                               labels = c("Democrat", "Independent", "Republican")),
+         pol_know_factor = factor(pol_knowledge,
+                               levels = 0:1,
+                               labels = c("Knowledgeable", "Unknowledgeable")),
+         educ_factor   = factor(college_degree, 
+                                   levels = 0:1, 
+                                   labels = c("No college", "College")))
+
+# vote distribution
+p5 <- tbl %>%
+  ggplot(aes(x=vote_factor, y = ..prop.., group = 1)) + 
+  geom_bar(fill = '#00ff00') + 
+  xlab("Vote") +
+  ylab("Proportion") +
+  ylim(0,.70) +
+  theme_minimal()
+
+# gender distribution
+p6 <- tbl %>% 
+  ggplot(aes(x=gender_factor, y = ..prop.., group = 1)) + 
+  geom_bar(fill = '#00ff00')  +
+  xlab("Gender") +
+  ylab("") +
+  ylim(0,.7) +
+  theme_minimal()
+
+# education distribution
+p7 <- tbl %>% 
+  ggplot(aes(x=educ_factor, y = ..prop.., group = 1)) + 
+  geom_bar(fill = '#00ff00')  +
+  xlab("Education") +
+  ylab("") +
+  ylim(0,.8) +
+  theme_minimal()
+
+ggarrange(p5, p6, p7, ncol = 3, nrow = 1, labels = c("A", "B", "C"))
+```
+
+```{r single-plot2, echo = FALSE, dpi=300, fig.align='center', fig.cap='Distribution of vote over gender, education, race, and party ID', fig.height=4, fig.width=7.3}
+# vote over gender
+p_gender <- tbl %>%
+  ggplot(aes(x=gender_factor, 
+             y = ..prop.., 
+             group = vote_factor,
+             fill = vote_factor)) + 
+  geom_bar( position = 'dodge') +
+  xlab("Gender") +
+  ylab("Proportion") +
+  ylim(0,.7) +
+  labs(fill = "Vote") +
+  scale_fill_manual(values = c("#ff0000", "#00ff00"))+
+  theme_minimal()
+
+# vote over education
+p_educ <- tbl %>%
+  ggplot(aes(x=pol_know_factor, 
+             y = ..prop.., 
+             group = vote_factor,
+             fill = vote_factor)) + 
+  geom_bar( position = 'dodge') +
+  xlab("Political Knowledge") +
+  ylab("Proportion") +
+  ylim(0,.8) +
+  labs(fill = "Vote") +
+  scale_fill_manual(values = c("#ff0000", "#00ff00"))+
+  theme_minimal()
+
+# vote over race
+p_race <- tbl %>%
+  ggplot(aes(x=race_factor, 
+             y = ..prop.., 
+             group = vote_factor,
+             fill = vote_factor)) + 
+  geom_bar(position = 'dodge') +
+  xlab("Race") +
+  ylab("Proportion") +
+  ylim(0,1) +
+  labs(fill = "Vote") +
+  scale_fill_manual(values = c("#ff0000", "#00ff00"))+
+  theme_minimal()
+
+# vote over party ID
+p_party <- tbl %>%
+  ggplot(aes(x=party_factor, 
+             y = ..prop.., 
+             group = vote_factor,
+             fill = vote_factor)) + 
+  geom_bar(position = 'dodge') +
+  xlab("Party ID") +
+  ylab("Proportion") +
+  ylim(0,1) +
+  labs(fill = "Vote") +
+  scale_fill_manual(values = c("#ff0000", "#00ff00"))+
+  theme_minimal()
+
+
+
+ggarrange(p_gender, p_educ, p_party, p_race, ncol = 2, nrow = 2, common.legend = T,
+          align = c("hv"), labels = c("A", "B", "c", "D"))
+
+
+```
+
+
+Figure \@ref(fig:single-plot3) illustrates the distribution of votes over income and age. Plot A shows that people with a household income above the national median income favored Obama, while those under the median are in favor of McCain. Finally, respondents who supported Obama have a lower median age than those who favored McCain. Next section discusses the methodology.
+
+# Methodology
+Generalized Linear Model (GLM) with the logistic function is used to estimate the relationship between the outcome and predictor variables. To test the first hypothesis, I define three different models. The first one is the base model with no control variables. The following shows the specification for this model:
+
+$$
+Log(\frac{p}{1-p}) = \beta_0 + \beta_1Ideology + \beta_2Ind + \beta_3Rep +\beta_4Ideology*Ind + \beta_5Ideology*Rep
+$$
+The Second model *(Income)* adds respondents' income, and the third model *(Race)* adds respondents' race as controls. While exploring the data, I found out that these two variables are potentially relevant for this analysis. Furthermore, the voting behavior literature traditionally take these two explanations into account when analyzing the vote choice. 
+
+The Second hypothesis is tested using ideology as main predictor and respondents' political knowledge as moderator of this effect. Again, Three different models are conducted to test the Second hypothesis. The base model has the following specification with the Democrats as the reference category:
+$$
+Log(\frac{p}{1-p}) = \beta_0 + \beta_1Ideology +\beta_2Ind+\beta_3Rep+\beta_4Knowledgeable Resp. +\beta_5Ideology*Knowledgeable Resp.
+$$
+
+```{r single-plot3, echo = FALSE, dpi=300, fig.align='center', fig.cap='Distribution of vote over income and age', warning=FALSE, fig.width=5, fig.height=4}
+# vote over race
+p_inc <- tbl %>%
+  ggplot(aes(x=inc_factor, 
+             y = ..prop.., 
+             group = vote_factor,
+             fill = vote_factor)) + 
+  geom_bar( position = 'dodge') +
+  xlab("Income") +
+  ylab("Proportion") +
+  ylim(0,.8) +
+  labs(fill = "Vote") +
+  scale_fill_manual(values = c("#ff0000", "#00ff00"))+
+  theme_minimal()
+
+# vote over age
+p_age <- tbl %>%
+  ggplot(aes(x = vote_factor, 
+             y = age, 
+             group = vote_factor,
+             fill = vote_factor)) + 
+  geom_boxplot() + 
+  coord_flip() +
+  ylab("Age") +
+  xlab("") +
+  theme(legend.position = "none")+
+  scale_fill_manual(values = c("#ff0000", "#00ff00"))+
+  theme_minimal()
+
+ggarrange(p_inc, p_age, ncol = 1, nrow = 2, common.legend = T, labels = c("A", "B"))
+```
+
+
+Since we are interested in the vote choice of knowledgeable independent voters, the Second model only includes these respondents. Finally, the last model for hypothesis 2 takes the following specification, which controls for income. I do so, because independents of different household income seem to have different probability of voting for Obama, when positioned at the mid-point of candidates average:
+$$
+Log(\frac{p}{1-p}) = \beta_0 + \beta_1Ideology +\beta_2Ind+\beta_3Rep+ \beta_4Income+\beta_5Knowledgeable Resp. +\beta_6Ideology*Knowledgeable Resp.
+$$
+
+Next section presents the results.
+
+# Results
+
+## Results for the first hypothesis
+
+Table \@ref(tab:regression1) summarizes the result of the GLM models for the hypothesis 1.
+```{r model 1, echo=FALSE, warning=FALSE, results='asis', fig.height=4}
+## creating dummy variable for party_id
+# party id
+dat$demo <- ifelse(dat$party_id==1, 1, 0)
+dat$ind <- ifelse(dat$party_id==2, 1, 0)
+dat$rep <- ifelse(dat$party_id==3, 1, 0)
+
+# race
+dat$white <- ifelse(dat$race==1, 1, 0)
+dat$black <- ifelse(dat$race==2, 1, 0)
+dat$mixed <- ifelse(dat$race==3, 1, 0)
+
+#models for hypothesis 1
+#base model
+m1 <- glm(obama ~ lib_con_self + ind + rep + lib_con_self * ind + lib_con_self * rep, data = dat, family = binomial(link = "logit"))
+#summary(m1)
+
+# control for income
+m1_inc <- glm(obama ~ lib_con_self + above_median_inc + ind + rep + lib_con_self * ind + lib_con_self * rep, data = dat, family = binomial(link = "logit"))
+#summary(m1_inc)
+
+# control for race
+m1_race <- glm(obama ~ lib_con_self + black + mixed + ind + rep + lib_con_self * ind + lib_con_self * rep, data = dat, family = binomial(link = "logit"))
+#summary(m1_race)
+
+# create regression table
+stargazer(m1, m1_inc, m1_race, type = stargazer_opt,
+          title = "Regression Results for Hypothesis 1",
+          covariate.labels = c("Ideological self-placement",
+                               "Above median income",
+                               "Black", "Mixed", "Independent", "Republicans",
+                               "Self-placement*Ind", "Self-Placement*Rep",
+                               "Constant"),
+          dep.var.caption = "", dep.var.labels = "Vote for Obama",
+          ci = T, keep.stat = c("n"), model.numbers = F,
+          label = "tab:regression1", header = FALSE,
+          column.labels = c("Base", "Income", "Race"))
+```
+
+The Race model shows that a one unit increase in the self-placement scale yields a 0.33 change in log odds of voting for Obama, given that the respondent is democrat and all other variables are held at a certain value. Since the coefficient is negative, we can say that the probability of voting for Obama decreases in this case. If a respondent is independent, then this change in log odds of voting for Obama is even greater *((-0.334) + (-0.265) = -0.599)*; and for a Republican respondent, this effect is the largest *((-0.334) + (-0.271) = -0.605)*. Since the interpretation of log of adds isn't straight forward, Figure \@ref(fig:single-plot4) shows the predicted probabilities of voting for Obama from the base model. However, the coefficient of self-placement in the base model is not statistically significant.  
+
+We observe that voters with different party identification and different positions on the self-placement scale have different probabilities of voting for Obama. However, the range of probability for Independents is larger than it is for Democrats or Republicans. This implies that these voters are more variable in their vote choice given their position on self-placement scale. In other words, self-placement of Democrats and Republicans seem to be moderated by their party identification.
+
+Next, Figure \@ref(fig:single-plot5) shows the predicted probabilities of the model with income as control. We can observe that when considering income, it doesn't make much of a difference for Democrats. However, Independents and Republicans of different income have slightly different probabilities of voting for Obama. The moderation effect of party for Republicans of low income doesn't seem to be very strong because their range of the predicted probability (which is 0.52) is somewhat similar to that of Independents (which is 0.55).
+```{r single-plot4, echo = FALSE, dpi=300, fig.width=6, fig.height=6, out.width='75%', fig.align='center', fig.cap= "Predicted Probabilities for the base model"}
+## predicted probs for base model H1
+# 1. get the coefficients and the variance-covariance matrix
+beta_hat <- coef(m1)
+V_hat <- vcov(m1)
+
+# 2. draw from a multivariate normal distribution n time N(beta_hat, V_hat)
+S <- mvrnorm(n = 1000, mu = beta_hat, Sigma = V_hat)
+
+# 3. choose interesting quantities of interest
+# a range for lib_con_self
+lib_con_self_range <- seq(min(dat$lib_con_self, na.rm = T), max(dat$lib_con_self, na.rm = T), length.out = 200) # range of values for lib_con_self
+
+# three scenarios (demo, ind, rep)
+demo <- cbind(1, lib_con_self_range, 0, 0, lib_con_self_range * 0 , lib_con_self_range * 0) 
+ind <- cbind(1, lib_con_self_range, 1, 0, lib_con_self_range * 1 , lib_con_self_range * 0) 
+rep <- cbind(1, lib_con_self_range, 0, 1, lib_con_self_range * 0, lib_con_self_range * 1) #scenario for rep
+
+# expected values
+Xbeta_demo <- S %*% t(demo)
+Xbeta_ind <- S %*% t(ind)
+Xbeta_rep <- S %*% t(rep)
+
+# Get expected values for p by plugging in the EVs into the response function
+p_sim_demo <- plogis(Xbeta_demo)
+p_sim_ind <- plogis(Xbeta_ind)
+p_sim_rep <- plogis(Xbeta_rep)
+
+# Calculate the mean and the quantiles
+p_mean_demo <- apply(p_sim_demo, 2, mean)
+p_qu_demo <- t(apply(p_sim_demo, 2, quantile, prob = c(0.025, 0.975)))
+
+p_mean_ind <- apply(p_sim_ind, 2, mean)
+p_qu_ind <- t(apply(p_sim_ind, 2, quantile, prob = c(0.025, 0.975)))
+
+p_mean_rep <- apply(p_sim_rep, 2, mean)
+p_qu_rep <- t(apply(p_sim_rep, 2, quantile, prob = c(0.025, 0.975)))
+
+# start with an empty plot
+plot(x = lib_con_self_range, 
+     y = p_mean_demo,
+     main = "Voters' Ideology and probability of voting for Obama",
+     type = "n",
+     ylim = c(0, 1),
+     ylab = "Probability of voting for Obama",
+     xlab = "Voters Ideological self-placement",
+     bty = "n",
+     las = 1, xaxt="n",
+     )
+ticks = c(1, mean(dat$lib_con_obama, na.rm = T),
+          mean(dat$lib_con_mccain, na.rm = T), 7)
+axis(1, at = round(ticks,1), labels = T)
+mtext(c("Obama (Average)"), 1, at = 3, 2, cex = 0.9)
+mtext(c("McCain (Average)"), 1, at = 5, 2, cex = 0.9)
+
+# add line for demo
+lines(x = lib_con_self_range, 
+      y = p_mean_demo, lwd = 2, col = "#0000ff")
+lines(x = lib_con_self_range, 
+      y = p_qu_demo[, 1], 
+      lty = "dashed", 
+      col = "#0000ff")
+lines(x = lib_con_self_range, 
+      y = p_qu_demo[, 2], 
+      lty = "dashed", 
+      col = "#0000ff")
+
+# add line independent
+lines(x = lib_con_self_range, 
+      y = p_mean_ind, lwd = 2, col = "#00ff00")
+lines(x = lib_con_self_range, 
+      y = p_qu_ind[, 1], 
+      lty = "dashed", 
+      col = "#00ff00")
+lines(x = lib_con_self_range, 
+      y = p_qu_ind[, 2], 
+      lty = "dashed", 
+      col = "#00ff00")
+
+# add line for Republican
+lines(x = lib_con_self_range, 
+      y = p_mean_rep, lwd = 2, col = "#ff0000")
+lines(x = lib_con_self_range, 
+      y = p_qu_rep[, 1], 
+      lty = "dashed", 
+      col = "#ff0000")
+lines(x = lib_con_self_range, 
+      y = p_qu_rep[, 2], 
+      lty = "dashed", 
+      col = "#ff0000")
+legend("bottomleft", c("Democrat", "Independent", "Republican"), lty = c("solid", "solid"),
+       pch = "", col = c("#0000ff", "#00ff00", "#ff0000"), bty = "n", cex = 0.9)
+```
+
+```{r single-plot5, echo=FALSE, dpi=300, fig.align='center', fig.cap= "Predicted Probabilities for the model with income added"}
+# plot predicted probs for the model with income (income under and above the median)
+
+#scenario for income under the mean
+# 1. get the coefficients and the variance-covariance matrix
+beta_hat <- coef(m1_inc)
+V_hat <- vcov(m1_inc)
+
+# 2. draw from a multivariate normal distribution n time N(beta_hat, V_hat)
+S <- mvrnorm(n = 1000, mu = beta_hat, Sigma = V_hat)
+
+# 3. choose interesting quantities of interest
+# a range for lib_con_self
+lib_con_self_range <- seq(min(dat$lib_con_self, na.rm = T), max(dat$lib_con_self, na.rm = T), length.out = 200) # range of values for lib_con_self
+
+# three scenarios (demo, ind, rep)
+demo_inc_low <- cbind(1, lib_con_self_range, 0, 0, 0, lib_con_self_range * 0 , lib_con_self_range * 0) 
+ind_inc_low <- cbind(1, lib_con_self_range, 0, 1, 0, lib_con_self_range * 1, lib_con_self_range * 0) 
+rep_inc_low <- cbind(1, lib_con_self_range, 0, 0, 1, lib_con_self_range * 0, lib_con_self_range * 1)
+
+# expected values
+Xbeta_demo_inc_low <- S %*% t(demo_inc_low)
+Xbeta_ind_inc_low <- S %*% t(ind_inc_low)
+Xbeta_rep_inc_low <- S %*% t(rep_inc_low)
+
+# Get expected values for p by plugging in the EVs into the response function
+p_sim_demo_inc_low <- plogis(Xbeta_demo_inc_low)
+p_sim_ind_inc_low <- plogis(Xbeta_ind_inc_low)
+p_sim_rep_inc_low <- plogis(Xbeta_rep_inc_low)
+
+# Calculate the mean and the quantiles
+p_mean_demo_inc_low <- apply(p_sim_demo_inc_low, 2, mean)
+p_qu_demo_inc_low <- t(apply(p_sim_demo_inc_low, 2, quantile, prob = c(0.025, 0.975)))
+
+p_mean_ind_inc_low <- apply(p_sim_ind_inc_low, 2, mean)
+p_qu_ind_inc_low <- t(apply(p_sim_ind_inc_low, 2, quantile, prob = c(0.025, 0.975)))
+
+p_mean_rep_inc_low <- apply(p_sim_rep_inc_low, 2, mean)
+p_qu_rep_inc_low <- t(apply(p_sim_rep_inc_low, 2, quantile, prob = c(0.025, 0.975)))
+
+# start with an empty plot
+par(mfrow = c(1,2))
+plot(x = lib_con_self_range, 
+     y = p_mean_demo_inc_low,
+     main = "Income Under the Median",
+     type = "n",
+     ylim = c(0, 1),
+     ylab = "Probability of voting for Obama",
+     xlab = "Voters' self-placement",
+     bty = "n",
+     las = 1, xaxt="n",
+     )
+ticks = c(1, mean(dat$lib_con_obama, na.rm = T),
+          mean(dat$lib_con_mccain, na.rm = T), 7)
+axis(1, at = round(ticks,1), labels = T)
+mtext(c("Obama"), 1, at = 3, 2, cex = 0.8)
+mtext(c("McCain"), 1, at = 5, 2, cex = 0.8)
+
+
+# add line for demo
+lines(x = lib_con_self_range, 
+      y = p_mean_demo_inc_low, lwd = 2, col = "#0000ff")
+lines(x = lib_con_self_range, 
+      y = p_qu_demo_inc_low[, 1], 
+      lty = "dashed", 
+      col = "#0000ff")
+lines(x = lib_con_self_range, 
+      y = p_qu_demo_inc_low[, 2], 
+      lty = "dashed", 
+      col = "#0000ff")
+
+# add line independent
+lines(x = lib_con_self_range, 
+      y = p_mean_ind_inc_low, lwd = 2, col = "#00ff00")
+lines(x = lib_con_self_range, 
+      y = p_qu_ind_inc_low[, 1], 
+      lty = "dashed", 
+      col = "#00ff00")
+lines(x = lib_con_self_range, 
+      y = p_qu_ind_inc_low[, 2], 
+      lty = "dashed", 
+      col = "#00ff00")
+
+# add line for Republican
+lines(x = lib_con_self_range, 
+      y = p_mean_rep_inc_low, lwd = 2, col = "#ff0000")
+lines(x = lib_con_self_range, 
+      y = p_qu_rep_inc_low[, 1], 
+      lty = "dashed", 
+      col = "#ff0000")
+lines(x = lib_con_self_range, 
+      y = p_qu_rep_inc_low[, 2], 
+      lty = "dashed", 
+      col = "#ff0000")
+legend("bottomleft", c("Democrat", "Independent", "Republican"), lty = c("solid", "solid"),
+       pch = "", col = c("#0000ff", "#00ff00", "#ff0000"), bty = "n", cex = 0.8)
+
+
+# scenario for income above the mean
+demo_inc_hi <- cbind(1, lib_con_self_range, 1, 0, 0, lib_con_self_range * 0, lib_con_self_range * 0) #scenario for demo
+ind_inc_hi <- cbind(1, lib_con_self_range, 1, 1, 0, lib_con_self_range * 1, lib_con_self_range * 0) #scenario for ind
+rep_inc_hi <- cbind(1, lib_con_self_range, 1, 0, 1, lib_con_self_range * 0, lib_con_self_range * 1) #scenario for rep
+
+
+# expected values
+Xbeta_demo_inc_hi <- S %*% t(demo_inc_hi)
+Xbeta_ind_inc_hi <- S %*% t(ind_inc_hi)
+Xbeta_rep_inc_hi <- S %*% t(rep_inc_hi)
+
+# Get expected values for p by plugging in the EVs into the response function
+p_sim_demo_inc_hi <- plogis(Xbeta_demo_inc_hi)
+p_sim_ind_inc_hi <- plogis(Xbeta_ind_inc_hi)
+p_sim_rep_inc_hi <- plogis(Xbeta_rep_inc_hi)
+
+# Calculate the mean and the quantiles
+p_mean_demo_inc_hi <- apply(p_sim_demo_inc_hi, 2, mean)
+p_qu_demo_inc_hi <- t(apply(p_sim_demo_inc_hi, 2, quantile, prob = c(0.025, 0.975)))
+
+p_mean_ind_inc_hi <- apply(p_sim_ind_inc_hi, 2, mean)
+p_qu_ind_inc_hi <- t(apply(p_sim_ind_inc_hi, 2, quantile, prob = c(0.025, 0.975)))
+
+p_mean_rep_inc_hi <- apply(p_sim_rep_inc_hi, 2, mean)
+p_qu_rep_inc_hi <- t(apply(p_sim_rep_inc_hi, 2, quantile, prob = c(0.025, 0.975)))
+
+# start with an empty plot
+plot(x = lib_con_self_range, 
+     y = p_mean_demo_inc_hi,
+     main = "Income above the Median",
+     type = "n",
+     ylim = c(0, 1),
+     ylab = "",
+     xlab = "Voters' self-placement",
+     bty = "n",
+     las = 1, xaxt="n",
+     )
+ticks = c(1, mean(dat$lib_con_obama, na.rm = T),
+          mean(dat$lib_con_mccain, na.rm = T), 7)
+axis(1, at = round(ticks,1), labels = T)
+mtext(c("Obama"), 1, at = 3, 2, cex = 0.8)
+mtext(c("McCain"), 1, at = 5, 2, cex = 0.8)
+
+
+# add line for demo
+lines(x = lib_con_self_range, 
+      y = p_mean_demo_inc_hi, lwd = 2, col = "#0000ff")
+lines(x = lib_con_self_range, 
+      y = p_qu_demo_inc_hi[, 1], 
+      lty = "dashed", 
+      col = "#0000ff")
+lines(x = lib_con_self_range, 
+      y = p_qu_demo_inc_hi[, 2], 
+      lty = "dashed", 
+      col = "#0000ff")
+
+# add line independent
+lines(x = lib_con_self_range, 
+      y = p_mean_ind_inc_hi, lwd = 2, col = "#00ff00")
+lines(x = lib_con_self_range, 
+      y = p_qu_ind_inc_hi[, 1], 
+      lty = "dashed", 
+      col = "#00ff00")
+lines(x = lib_con_self_range, 
+      y = p_qu_ind_inc_hi[, 2], 
+      lty = "dashed", 
+      col = "#00ff00")
+
+# add line for Republican
+lines(x = lib_con_self_range, 
+      y = p_mean_rep_inc_hi, lwd = 2, col = "#ff0000")
+lines(x = lib_con_self_range, 
+      y = p_qu_rep_inc_hi[, 1], 
+      lty = "dashed", 
+      col = "#ff0000")
+lines(x = lib_con_self_range, 
+      y = p_qu_rep_inc_hi[, 2], 
+      lty = "dashed", 
+      col = "#ff0000")
+#range(p_mean_rep_inc_low)
+#range(p_mean_ind_inc_low)
+#0.04387775 - 0.55902200
+#0.3650186 - 0.9126991
+```
+
+
+```{r single-plot6, echo=FALSE, dpi=300, fig.align='center', fig.cap= "Predicted Probabilities for the model with race added", fig.height=4}
+# plot predicted probs for the model with race (only white vs black)
+#scenario for white
+# 1. get the coefficients and the variance-covariance matrix
+beta_hat <- coef(m1_race)
+V_hat <- vcov(m1_race)
+
+# 2. draw from a multivariate normal distribution n time N(beta_hat, V_hat)
+S <- mvrnorm(n = 1000, mu = beta_hat, Sigma = V_hat)
+
+# 3. choose interesting quantities of interest
+# a range for lib_con_self (already defines)
+
+# three scenarios (demo, ind, rep)
+demo_white <- cbind(1, lib_con_self_range, 0, 0, 0, 0, lib_con_self_range * 0, lib_con_self_range * 0) #scenario for demo
+ind_white <- cbind(1, lib_con_self_range, 0, 0, 1, 0, lib_con_self_range * 1, lib_con_self_range * 0) #scenario for ind
+rep_white <- cbind(1, lib_con_self_range, 0, 0, 0, 1, lib_con_self_range * 0, lib_con_self_range * 1) #scenario for rep
+
+# expected values
+Xbeta_demo_white <- S %*% t(demo_white)
+Xbeta_ind_white <- S %*% t(ind_white)
+Xbeta_rep_white <- S %*% t(rep_white)
+
+# Get expected values for p by plugging in the EVs into the response function
+p_sim_demo_white <- plogis(Xbeta_demo_white)
+p_sim_ind_white <- plogis(Xbeta_ind_white)
+p_sim_rep_white <- plogis(Xbeta_rep_white)
+
+# Calculate the mean and the quantiles
+p_mean_demo_white <- apply(p_sim_demo_white, 2, mean)
+p_qu_demo_white<- t(apply(p_sim_demo_white, 2, quantile, prob = c(0.025, 0.975)))
+
+p_mean_ind_white <- apply(p_sim_ind_white, 2, mean)
+p_qu_ind_white <- t(apply(p_sim_ind_white, 2, quantile, prob = c(0.025, 0.975)))
+
+p_mean_rep_white <- apply(p_sim_rep_white, 2, mean)
+p_qu_rep_white <- t(apply(p_sim_rep_white, 2, quantile, prob = c(0.025, 0.975)))
+
+# start with an empty plot
+par(mfrow = c(1,3))
+plot(x = lib_con_self_range, 
+     y = p_mean_demo_white,
+     main = "White",
+     type = "n",
+     ylim = c(0, 1),
+     ylab = "Probability of voting for Obama",
+     xlab = "Voters' self-placement",
+     bty = "n",
+     las = 1, xaxt="n",
+     )
+ticks = c(1, mean(dat$lib_con_obama, na.rm = T),
+          mean(dat$lib_con_mccain, na.rm = T), 7)
+axis(1, at = round(ticks,1), labels = T)
+mtext(c("Obama"), 1, at = 3, 2, cex = 0.6)
+mtext(c("McCain"), 1, at = 5, 2, cex = 0.6)
+
+
+# add line for demo
+lines(x = lib_con_self_range, 
+      y = p_mean_demo_white, lwd = 2, col = "#0000ff")
+
+# add line independent
+lines(x = lib_con_self_range, 
+      y = p_mean_ind_white, lwd = 2, col = "#00ff00")
+
+# add line for Republican
+lines(x = lib_con_self_range, 
+      y = p_mean_rep_white, lwd = 2, col = "#ff0000")
+
+# scenario for income above the mean black respondents
+demo_black <- cbind(1, lib_con_self_range, 1, 0, 0, 0, lib_con_self_range * 0, lib_con_self_range * 0) #scenario for demo
+ind_black <- cbind(1, lib_con_self_range, 1, 0, 1, 0, lib_con_self_range * 1, lib_con_self_range * 0) #scenario for ind
+rep_black <- cbind(1, lib_con_self_range, 1, 0, 0, 1, lib_con_self_range * 0, lib_con_self_range * 1) #scenario for rep
+
+# expected values
+Xbeta_demo_black <- S %*% t(demo_black)
+Xbeta_ind_black <- S %*% t(ind_black)
+Xbeta_rep_black <- S %*% t(rep_black)
+
+# Get expected values for p by plugging in the EVs into the response function
+p_sim_demo_black <- plogis(Xbeta_demo_black)
+p_sim_ind_black <- plogis(Xbeta_ind_black)
+p_sim_rep_black <- plogis(Xbeta_rep_black)
+
+# Calculate the mean and the quantiles
+p_mean_demo_black <- apply(p_sim_demo_black, 2, mean)
+p_qu_demo_black <- t(apply(p_sim_demo_black, 2, quantile, prob = c(0.025, 0.975)))
+
+p_mean_ind_black <- apply(p_sim_ind_black, 2, mean)
+p_qu_ind_black <- t(apply(p_sim_ind_black, 2, quantile, prob = c(0.025, 0.975)))
+
+p_mean_rep_black <- apply(p_sim_rep_black, 2, mean)
+p_qu_rep_black <- t(apply(p_sim_rep_black, 2, quantile, prob = c(0.025, 0.975)))
+
+# start with an empty plot
+plot(x = lib_con_self_range, 
+     y = p_mean_demo_black,
+     main = "Black",
+     type = "n",
+     ylim = c(0, 1),
+     ylab = "",
+     xlab = "Voters' self-placement",
+     bty = "n",
+     las = 1, xaxt="n",
+     )
+ticks = c(1, mean(dat$lib_con_obama, na.rm = T),
+          mean(dat$lib_con_mccain, na.rm = T), 7)
+axis(1, at = round(ticks,1), labels = T)
+mtext(c("Obama"), 1, at = 3, 2, cex = 0.6)
+mtext(c("McCain"), 1, at = 5, 2, cex = 0.6)
+
+# add line for demo
+lines(x = lib_con_self_range, 
+      y = p_mean_demo_black, lwd = 2, col = "#0000ff")
+
+# add line independent
+lines(x = lib_con_self_range, 
+      y = p_mean_ind_black, lwd = 2, col = "#00ff00")
+
+# add line for Republican
+lines(x = lib_con_self_range, 
+      y = p_mean_rep_black, lwd = 2, col = "#ff0000")
+
+# scenario for income above the mean mexed respondents
+demo_mixed <- cbind(1, lib_con_self_range, 0, 1, 0, 0, lib_con_self_range * 0, lib_con_self_range * 0) #scenario for demo
+ind_mixed <- cbind(1, lib_con_self_range, 0, 1, 1, 0, lib_con_self_range * 1, lib_con_self_range * 0) #scenario for ind
+rep_mixed <- cbind(1, lib_con_self_range, 0, 1, 0, 1, lib_con_self_range * 0, lib_con_self_range * 1) #scenario for rep
+
+# expected values
+Xbeta_demo_mixed <- S %*% t(demo_mixed)
+Xbeta_ind_mixed <- S %*% t(ind_mixed)
+Xbeta_rep_mixed <- S %*% t(rep_mixed)
+
+# Get expected values for p by plugging in the EVs into the response function
+p_sim_demo_mixed <- plogis(Xbeta_demo_mixed)
+p_sim_ind_mixed <- plogis(Xbeta_ind_mixed)
+p_sim_rep_mixed <- plogis(Xbeta_rep_mixed)
+
+# Calculate the mean and the quantiles
+p_mean_demo_mixed <- apply(p_sim_demo_mixed, 2, mean)
+p_qu_demo_mixed <- t(apply(p_sim_demo_mixed, 2, quantile, prob = c(0.025, 0.975)))
+
+p_mean_ind_mixed <- apply(p_sim_ind_mixed, 2, mean)
+p_qu_ind_mixed <- t(apply(p_sim_ind_mixed, 2, quantile, prob = c(0.025, 0.975)))
+
+p_mean_rep_mixed <- apply(p_sim_rep_mixed, 2, mean)
+p_qu_rep_mixed <- t(apply(p_sim_rep_mixed, 2, quantile, prob = c(0.025, 0.975)))
+
+# start with an empty plot
+plot(x = lib_con_self_range, 
+     y = p_mean_demo_mixed,
+     main = "Mixed",
+     type = "n",
+     ylim = c(0, 1),
+     ylab = "",
+     xlab = "Voters' self-placement",
+     bty = "n",
+     las = 1, xaxt="n",
+     )
+ticks = c(1, mean(dat$lib_con_obama, na.rm = T),
+          mean(dat$lib_con_mccain, na.rm = T), 7)
+axis(1, at = round(ticks,1), labels = T)
+mtext(c("Obama"), 1, at = 3, 2, cex = 0.6)
+mtext(c("McCain"), 1, at = 5, 2, cex = 0.6)
+
+# add line for demo
+lines(x = lib_con_self_range, 
+      y = p_mean_demo_mixed, lwd = 2, col = "#0000ff")
+
+# add line independent
+lines(x = lib_con_self_range, 
+      y = p_mean_ind_mixed, lwd = 2, col = "#00ff00")
+
+# add line for Republican
+lines(x = lib_con_self_range, 
+      y = p_mean_rep_mixed, lwd = 2, col = "#ff0000")
+
+legend("bottomleft", c("Democrat", "Independent", "Republican"), lty = c("solid", "solid"),
+       pch = "", col = c("#0000ff", "#00ff00", "#ff0000"), bty = "n", cex = 0.8)
+```
+Things get even more interesting when we control for race. Figure \@ref(fig:single-plot6) shows the predicted probabilities for the model with race added as control. Again, we can observe that White Independent respondents are more variable than white Democrats and white Republicans. Confirming the first hypothesis that the effect of ideology on vote choice is greater for Independents. However, when talking about Black and Mixed respondents, the Republicans shows the largest variability in predicted probabilities. This implies that if someone is Black or Mixed and Republican, his ideological self-placement is not very constrained by his party identification. Black and Mixed respondents, in general, shows larger probabilities of voting for Obama than Whites, holding everything else constant (larger intercepts on the y axis). 
+
+
+```{r predbase, echo=FALSE, results='asis'}
+## predict probs for different combinations for model 1 (base)
+
+## define values
+at_vals <- expand.grid(lib_con_self = seq(1, 7, by = 6), 
+                       ind = seq(0, 1, by = 1), rep = seq(0, 1, by = 1))
+at_vals <- at_vals[1:6,]
+
+#  The augment function append the predicted probability of voting to every one of the combinations that are specified
+pred_prob <- augment(m1, type.predict = 'response', newdata = at_vals, se_fit = TRUE) %>%
+   mutate(lower = .fitted - 1.96*.se.fit,
+          upper = .fitted + 1.96*.se.fit) %>%
+   mutate_if(is.numeric, ~ round(.,3))
+
+## make a table for the results
+pred_prob %>%
+   kable(col.names = c("Self-placement", 
+                      "Ind", "Rep", 
+                      "Pred. Prob","SE", 
+                      "Lower","Upper"), align = 'c',
+         caption = "Predicted probabilities (Base model)", format = "pipe")
+
+
+```
+
+Table \@ref(tab:predbase) presents the predicted probabilities of the base model for some interesting scenarios. The difference in probability of voting for Obama between two Democrats, one very liberal and the other very conservative, is only *0.962 - 0.906 = 0.056* (not even 1%). However, this difference for two Independents is *0.900 - 0.314 = 0.586* (almost 60%); and for two Republicans on the two different ends of the self-placement scale, it is *0.504 - 0.030 = 0.474* (47%).
+
+
+```{r predrace, echo=FALSE, results='asis'}
+## predict probs for different combinations for model 1 (race)
+## define values
+at_vals <- expand.grid(lib_con_self = seq(1, 7, by = 6),
+                       black = seq(0, 1, by = 1), mixed = 0,
+                       ind = seq(0, 1, by = 1), rep = seq(0, 1, by = 1))
+at_vals <- at_vals[1:12,]
+
+#  The augment function append the predicted probability of voting to every one of the combinations that are specified
+pred_prob <- augment(m1_race, type.predict = 'response', newdata = at_vals, se_fit = TRUE) %>%
+   mutate(lower = .fitted - 1.96*.se.fit,
+          upper = .fitted + 1.96*.se.fit) %>%
+   mutate_if(is.numeric, ~ round(.,3))
+
+## make a table for the results
+pred_prob %>%
+   kable(col.names = c("Self-placement", "Black", "Mixed", 
+                      "Ind", "Rep", 
+                      "Pred. Prob", 
+                      "SE", 
+                      "Lower", "Upper"), align = 'c',
+         caption = "Predicted probabilities (Race model)", format = "pipe")
+```
+Table \@ref(tab:predrace) shows some interesting scenarios for the Race model. Two White Republicans (one very liberal, the other very conservative) have a difference of almost 23%. The same two White Independents have a difference of 71%. However, it is different if we consider Black respondents. The difference between two Black Republicans (one liberal, the other conservative) is 28%, where is the difference for the same Black Independents is less than 1%. Thus, we can again conclude that party identification moderates the effect of self-placement on vote choice to a lesser degree for Black people than for White people. 
+
+
+### Points of indifference for different voters
+
+I calculate the points of indifference for the three groups based on the base model. This is how the model is specified. 
+$$
+Log(\frac{p}{1-p}) = \beta_0 + \beta_1X_1 + \beta_2X_2+ \beta_3X_3 + \beta_4X_1X_2 + \beta_5X_1X_3
+$$
+The point of indifference is *0.5*. Thus, we add it as the value of *p* in the specification:
+$$
+Log(\frac{0.5}{1-0.5}) = \beta_0 + \beta_1X_1 + \beta_2X_2+ \beta_3X_3 + \beta_4X_1X_2 + \beta_5X_1X_3
+$$ 
+After evaluating the expression (solving for $X_1$), we get:
+$$
+X_1 = \frac{\beta_0+\beta_2X_2+\beta_3X_3}{-\beta_1-\beta_4X_2-\beta_5X_3}
+$$
+
+```{r points of indifference for different voters, include=FALSE}
+# based on the base model
+# for democrats
+demo_ind_point <- (coef(m1)[1] + coef(m1)[3] * 0 + coef(m1)[4] * 0) / (-coef(m1)[2] - coef(m1)[5] * 0 - coef(m1)[6] * 0)
+
+# for independents
+ind_ind_point <- (coef(m1)[1] + coef(m1)[3] * 1 + coef(m1)[4] * 0) / (-coef(m1)[2] - coef(m1)[5] * 1 - coef(m1)[6] * 0)
+
+# for Republicans
+rep_ind_point <- (coef(m1)[1] + coef(m1)[3] * 0 + coef(m1)[4] * 1) / (-coef(m1)[2] - coef(m1)[5] * 0 - coef(m1)[6] * 1)
+
+demo_ind_point
+ind_ind_point
+rep_ind_point
+```
+
+A Democrat should have a position of 21 on the ideological self-placement to be undecided between Obama and McCain. However, the point of indifference for an Independent is 5.4, and for a Republican it is 1. 
+
+
+### First differences 
+
+Next, the first differences in the predicted probabilities of voting for Obama are calculated for each category of party identification. These first differences are resulted from changing voter's ideal point from the average perceived position of McCain to average perceived position of Obama. Again, I use the base model to calculate the first differences. Figure \@ref(fig:single-plot7) shows the plotted first differences which is 0.018 for a Democrat, 0.21 for an Independent, and 0.14 for a Republican. The effect is, as expected, strongest for an Independent. This implies that if an Independent changes his ideological position from the mean position of McCain to the mean position of Obama on the left-right scale, he will be 21% more likely to vote for Obama than before. 
+```{r single-plot7, echo = FALSE, dpi=300, fig.width=4, fig.height=4, out.width='75%', fig.align='center', fig.cap="First differences"}
+### calculate first differences for each group (demo, ind, rep)
+# 1. get the coefficients and the variance-covariance matrix
+beta_hat <- coef(m1)
+V_hat <- vcov(m1)
+
+# 2. draw from a multivariate normal distribution n time N(beta_hat, V_hat)
+S <- mvrnorm(n = 1000, mu = beta_hat, Sigma = V_hat)
+
+## mean for both Obama and McCain
+mean_obama <- mean(dat$lib_con_obama, na.rm = T)
+mean_mccain <- mean(dat$lib_con_mccain, na.rm = T)
+
+## scenario for democrats 
+demo_id_point_as_obama <- cbind(1, mean_obama, 0, 0, mean_obama * 0, mean_obama * 0)
+demo_id_point_as_mccain <- cbind(1, mean_mccain, 0, 0, mean_mccain * 0, mean_mccain * 0)
+
+## scenario for independent 
+ind_id_point_as_obama <- cbind(1, mean_obama, 1, 0, mean_obama * 1, mean_obama * 0)
+ind_id_point_as_mccain <- cbind(1, mean_mccain, 1, 0, mean_mccain * 1, mean_mccain * 0)
+
+## scenario for independent 
+rep_id_point_as_obama <- cbind(1, mean_obama, 0, 1, mean_obama * 0, mean_obama * 1)
+rep_id_point_as_mccain <- cbind(1, mean_mccain, 0, 1, mean_mccain * 0, mean_mccain *1)
+
+
+## expected values
+#for demos
+Xbeta_demo_id_point_as_obama <- S %*% t(demo_id_point_as_obama)
+Xbeta_demo_id_point_as_mccain <- S %*% t(demo_id_point_as_mccain)
+
+#for independents
+Xbeta_ind_id_point_as_obama <- S %*% t(ind_id_point_as_obama)
+Xbeta_ind_id_point_as_mccain <- S %*% t(ind_id_point_as_mccain)
+
+#for Republicans
+Xbeta_rep_id_point_as_obama <- S %*% t(rep_id_point_as_obama)
+Xbeta_rep_id_point_as_mccain <- S %*% t(rep_id_point_as_mccain)
+
+
+# Get expected values for p by plugging in the EVs into the response function
+# for demos
+p_sim_demo_as_obama <- plogis(Xbeta_demo_id_point_as_obama)
+p_sim_demo_as_mccain <- plogis(Xbeta_demo_id_point_as_mccain)                        
+
+# for independents
+p_sim_ind_as_obama <- plogis(Xbeta_ind_id_point_as_obama)
+p_sim_ind_as_mccain <- plogis(Xbeta_ind_id_point_as_mccain) 
+
+# for independents
+p_sim_rep_as_obama <- plogis(Xbeta_rep_id_point_as_obama)
+p_sim_rep_as_mccain <- plogis(Xbeta_rep_id_point_as_mccain) 
+                              
+
+# Calculate the mean and the quantiles
+# for demos
+p_mean_demo_as_obama <- apply(p_sim_demo_as_obama, 2, mean)
+p_mean_demo_as_mccain <- apply(p_sim_demo_as_mccain, 2, mean)
+
+# for independents
+p_mean_ind_as_obama <- apply(p_sim_ind_as_obama, 2, mean)
+p_mean_ind_as_mccain <- apply(p_sim_ind_as_mccain, 2, mean)
+
+# for Republicans
+p_mean_rep_as_obama <- apply(p_sim_rep_as_obama, 2, mean)
+p_mean_rep_as_mccain <- apply(p_sim_rep_as_mccain, 2, mean)
+
+## first differences 
+# for demos
+fd_demo <- p_mean_demo_as_obama - p_mean_demo_as_mccain
+
+# for independents
+fd_ind <- p_mean_ind_as_obama - p_mean_ind_as_mccain
+
+# for reps
+fd_rep <- p_mean_rep_as_obama - p_mean_rep_as_mccain
+
+# start with an empty plot
+plot(x = 1:3, 
+     y = 1:-1,
+     main = "Voters' Ideology and Probability of Voting for Obama",
+     cex.main = 1,
+     type = "n",
+     ylab = "Probability of voting for Obama",
+     xlab = "Party identification",
+     bty = "L",
+     ylim = c(0, 0.25),
+     las = 1, xaxt = "n",
+     )
+mtext(c("Democrat", "Independent", "Republican"), 1, at = c(1,2,3), line = 1)
+
+# add point for demo
+points(x= 1, y = fd_demo, lwd = 2, col = "#00ff00", pch = 2)
+
+# add point independent
+points(x = 2, y = fd_ind, lwd = 2, col = "#00ff00", pch = 2)
+
+# add point independent
+points(x = 3, y = fd_rep, lwd = 2, col = "#00ff00", pch = 2)
+ 
+```
+
+
+```{r models H2, echo=FALSE, warning=FALSE, results='asis'}
+# models for hypothesis two
+## base model
+m2 <- glm(obama ~ lib_con_self + ind + rep + pol_knowledge + lib_con_self * pol_knowledge, data = dat, family = binomial(link = "logit"))
+
+##only independents
+m2_only_ind <- glm(obama ~ lib_con_self + pol_knowledge + lib_con_self * pol_knowledge, data = subset(dat, party_id == 2), family = binomial(link = "logit"))
+
+## model with income
+m2_inc <- glm(obama ~ lib_con_self + ind + rep + above_median_inc + pol_knowledge + lib_con_self * pol_knowledge, data = dat, family = binomial(link = "logit"))
+
+# create regression table
+stargazer(m2, m2_only_ind, m2_inc, type = stargazer_opt,
+          title = "Regression Results for Hypothesis 2",
+          covariate.labels = c("Ideological self-placement", "Independent", "Republican",
+                               "Above median income", "Pol. knowledge",
+                               "Self-placement*Pol. knowledge", "Constant"),
+          dep.var.caption = "", dep.var.labels = "Vote for Obama",
+          ci = T, keep.stat = c("n"), model.numbers = F,
+          label = "tab:regression2", header = FALSE,
+          column.labels = c("Base", "Only Ind.", "Income"))
+```
+
+## Results for hypothesis 2
+Table \@ref(tab:regression2) reports the results of the GLM models. The base model shows that if a respondent is unknowledgeable, we expect to see *(exp(-0.260) = 0.77)* 13% decrease in the odds of voting for Obama, for one unit increase on the self-placement scale, holding everything else constant. If the respondent is knowledgeable, we expect to see *(exp(-0.765) = 46)* 54% decrease in odds of voting for Obama, by one unit increase on left-right scale, all else being equal.  
+
+
+
+```{r single-plot8, echo = FALSE, dpi=300, fig.align='center', fig.cap='Predicted probabilites from the three models for hypothesis 2', fig.width=5}
+## predicted probabilities for m2 for H2
+# 1. get the coefficients and the variance-covariance matrix
+beta_hat <- coef(m2)
+V_hat<- vcov(m2)
+
+# 2. draw from a multivariate normal distribution n time N(beta_hat, V_hat)
+S <- mvrnorm(n = 1000, mu = beta_hat, Sigma = V_hat)
+
+# 3. choose interesting quantities of interest
+lib_con_self_range <- seq(min(dat$lib_con_self, na.rm = T), max(dat$lib_con_self, na.rm = T), length.out = 200) # range of values for lib_con_self
+
+ind <- cbind(1, lib_con_self_range, 1, 0, 1, lib_con_self_range * 1) #scenario for ind
+
+# expected values
+Xbeta_ind <- S %*% t(ind)
+
+# Get expected values for p by plugging in the EVs into the response function
+p_sim_ind <- plogis(Xbeta_ind)
+
+# Calculate the mean and the quantiles
+p_mean_ind <- apply(p_sim_ind, 2, mean)
+p_qu_ind <- t(apply(p_sim_ind, 2, quantile, prob = c(0.025, 0.975)))
+
+# predicted probs for m2_only_ind
+beta_hat_m2_only_ind <- coef(m2_only_ind)
+V_hat_m2_only_ind <- vcov(m2_only_ind)
+
+# 2. draw from a multivariate normal distribution n time N(beta_hat, V_hat)
+S_m2_only_ind <- mvrnorm(n = 1000, mu = beta_hat_m2_only_ind, Sigma = V_hat_m2_only_ind)
+
+# 3. choose interesting quantities of interest
+lib_con_self_range <- seq(min(dat$lib_con_self, na.rm = T), max(dat$lib_con_self, na.rm = T), length.out = 200) # range of values for lib_con_self
+
+ind_m2_only_ind <- cbind(1, lib_con_self_range, 1, lib_con_self_range * 1) #scenario for ind
+
+# expected values
+Xbeta_m2_only_ind <- S_m2_only_ind %*% t(ind_m2_only_ind)
+
+# Get expected values for p by plugging in the EVs into the response function
+p_sim_m2_only_ind <- plogis(Xbeta_m2_only_ind)
+
+# Calculate the mean and the quantiles
+p_mean_m2_only_ind <- apply(p_sim_m2_only_ind, 2, mean)
+p_qu_m2_only_ind <- t(apply(p_sim_m2_only_ind, 2, quantile, prob = c(0.025, 0.975)))
+
+
+## predicted probabilities for model for H2 with income added
+beta_hat_m2_inc <- coef(m2_inc)
+V_hat_m2_inc<- vcov(m2_inc)
+
+# 2. draw from a multivariate normal distribution n time N(beta_hat, V_hat)
+S_m2_inc <- mvrnorm(n = 1000, mu = beta_hat_m2_inc, Sigma = V_hat_m2_inc)
+
+# 3. choose interesting quantities of interest
+lib_con_self_range <- seq(min(dat$lib_con_self, na.rm = T), max(dat$lib_con_self, na.rm = T), length.out = 200) # range of values for lib_con_self
+
+ind_m2_inc <- cbind(1, lib_con_self_range, 1, 0, 1, 1, lib_con_self_range * 1)
+
+# expected values
+Xbeta_ind_m2_inc <- S_m2_inc %*% t(ind_m2_inc)
+
+# Get expected values for p by plugging in the EVs into the response function
+p_sim_ind_m2_inc <- plogis(Xbeta_ind_m2_inc)
+
+# Calculate the mean and the quantiles
+p_mean_ind_m2_inc <- apply(p_sim_ind_m2_inc, 2, mean)
+p_qu_ind_m2_inc <- t(apply(p_sim_ind_m2_inc, 2, quantile, prob = c(0.025, 0.975)))
+
+# start with an empty plot
+## plot for m2 base
+plot(x = lib_con_self_range, 
+     y = p_mean_ind,
+     main = "Predicted Probabilities for Independent Voters",
+     cex.main = 1,
+     type = "n",
+     ylim = c(0, 1),
+     ylab = "Probability of voting for Obama",
+     xlab = "Voters Ideological self-placement",
+     bty = "n",
+     las = 1, xaxt="n", yaxt = "n",
+)
+ticks = c(1, 4.1, 7)
+axis(1, at = round(ticks,1), labels = T)
+axis(2, at = c(0, 0.5, 1), tick = T)
+mtext(c("Mid-point"), 1, at = 4.1, 2, cex = 0.8)
+
+# add line independent
+lines(x = lib_con_self_range, 
+      y = p_mean_ind, lwd = 2, col = "#00ff00")
+
+# add line for m2_only_ind
+lines(x = lib_con_self_range, 
+      y = p_mean_m2_only_ind, lwd = 2, col = "#0000ff")
+
+# add line for m2 with income
+lines(x = lib_con_self_range, 
+      y = p_mean_ind_m2_inc, lwd = 2, col = "#ff0000")
+
+legend("bottomleft", c("All Respondents", "Only Independent", "All with Income==1"), lty = c("solid", "solid"), pch = "", col = c("#00ff00", "#0000ff", "#ff0000"), bty = "n", cex = 0.8)
+```
+
+Figure \@ref(fig:single-plot8) plots the predicted probabilities of the three models only for knowledgeable Independents. I stipulate the following from the second hypothesis to test based the the predicted probabilities from the three models above: 
+
+**Stipulated hypothesis**: knowledgeable Independents should have a probability of *0.5*, when positioned at 4.1 on the self-placement scale (candidates mid-point). 
+
+```{r single-plot9), echo=FALSE, dpi=300, out.width='100%',fig.align='center', fig.cap='Predicted point probabilities', fig.height=4}
+##find the indifference point for independent when positioned at mid-point
+# first find the average for candidates' mid-points
+can_mid_point <- round((mean(dat$lib_con_obama, na.rm = T) + mean(dat$lib_con_mccain, na.rm = T)) /2, 1)
+
+## define the scenario (knowledgeable independents should have 0.5 prob when positioned at 4.1 self-placement)
+
+## define scenarios with 4.1
+# 1. get the coefficients and the variance-covariance matrix
+beta_hat <- coef(m2)
+V_hat<- vcov(m2)
+
+# 2. draw from a multivariate normal distribution n time N(beta_hat, V_hat)
+S <- mvrnorm(n = 1000, mu = beta_hat, Sigma = V_hat)
+
+# 3. choose interesting quantities of interest
+ind_mid <- cbind(1, can_mid_point, 1, 0, 1, can_mid_point * 1) #scenario for ind
+
+# expected values
+Xbeta_ind_mid <- S %*% t(ind_mid)
+
+# Get expected values for p by plugging in the EVs into the response function
+p_sim_ind_mid <- plogis(Xbeta_ind_mid)
+
+# Calculate the mean and the quantiles
+p_mean_ind_mid <- apply(p_sim_ind_mid, 2, mean)
+p_qu_ind_mid <- t(apply(p_sim_ind_mid, 2, quantile, prob = c(0.025, 0.975)))
+
+# predicted probs for m2_only_ind
+beta_hat_m2_only_ind <- coef(m2_only_ind)
+V_hat_m2_only_ind <- vcov(m2_only_ind)
+
+# 2. draw from a multivariate normal distribution n time N(beta_hat, V_hat)
+S_m2_only_ind <- mvrnorm(n = 1000, mu = beta_hat_m2_only_ind, Sigma = V_hat_m2_only_ind)
+
+# 3. choose interesting quantities of interest
+ind_m2_only_ind_mid <- cbind(1, can_mid_point, 1, can_mid_point * 1) #scenario for ind
+
+# expected values
+Xbeta_m2_only_ind_mid <- S_m2_only_ind %*% t(ind_m2_only_ind_mid)
+
+# Get expected values for p by plugging in the EVs into the response function
+p_sim_m2_only_ind_mid <- plogis(Xbeta_m2_only_ind_mid)
+
+# Calculate the mean and the quantiles
+p_mean_m2_only_ind_mid <- apply(p_sim_m2_only_ind_mid, 2, mean)
+p_qu_m2_only_ind_mid <- t(apply(p_sim_m2_only_ind_mid, 2, quantile, prob = c(0.025, 0.975)))
+
+
+## predicted probabilities for model for H2 with income added
+beta_hat_m2_inc <- coef(m2_inc)
+V_hat_m2_inc<- vcov(m2_inc)
+
+# 2. draw from a multivariate normal distribution n time N(beta_hat, V_hat)
+S_m2_inc <- mvrnorm(n = 1000, mu = beta_hat_m2_inc, Sigma = V_hat_m2_inc)
+
+# 3. choose interesting quantities of interest
+ind_m2_inc_mid <- cbind(1, can_mid_point, 1, 0, 1, 1, can_mid_point * 1)
+
+# expected values
+Xbeta_ind_m2_inc_mid <- S_m2_inc %*% t(ind_m2_inc_mid)
+
+# Get expected values for p by plugging in the EVs into the response function
+p_sim_ind_m2_inc_mid <- plogis(Xbeta_ind_m2_inc_mid)
+
+# Calculate the mean and the quantiles
+p_mean_ind_m2_inc_mid <- apply(p_sim_ind_m2_inc_mid, 2, mean)
+p_qu_ind_m2_inc_mid <- t(apply(p_sim_ind_m2_inc_mid, 2, quantile, prob = c(0.025, 0.975)))
+
+
+
+# start with an empty plot
+par(mfrow = c(1, 3))
+#m2
+plot(x = lib_con_self_range, 
+     y = p_mean_ind,
+     main = "All Respondents",
+     type = "n",
+     ylab = "Probability of voting for Obama",
+     xlab = "Voters Ideological self-placement",
+     ylim = c(0, 1),
+     bty = "n",
+     las = 1, xaxt="n", yaxt = "n",
+     )
+ticks = c(1, 4.1, 7)
+axis(1, at = round(ticks,1), labels = T)
+axis(2, at = c(0, 0.5, 1), tick = T)
+mtext(c("Mid-point"), 1, at = 4.1, 2, cex = 0.5)
+
+# add line independent
+lines(x = lib_con_self_range, 
+      y = p_mean_ind, lwd = 2, col = "#00ff00")
+
+#add indifference point for ind with pol. knowledge m2_base
+points(x = can_mid_point, y = p_mean_ind_mid, lwd = 2, col = "#00ff00", pch = 1, cex =1.5)
+
+segments(x0 = can_mid_point,
+         x1 = can_mid_point,
+         y0 = p_qu_ind_mid[2],
+         y1 = p_qu_ind_mid[1],
+         col = "#00ff00")
+segments(x0 = 0,
+         x1 = can_mid_point,
+         y0 = p_qu_ind_mid[2],
+         y1 = p_qu_ind_mid[2],
+         col = "#00ff00", lty = "dashed")
+segments(x0 = 0,
+         x1 = can_mid_point,
+         y0 = p_qu_ind_mid[1],
+         y1 = p_qu_ind_mid[1],
+         col = "#00ff00", lty = "dashed")
+
+#m2_only_ind
+plot(x = lib_con_self_range, 
+     y = p_mean_ind,
+     main = "Only Independens",
+     type = "n",
+     ylab = "Probability of voting for Obama",
+     xlab = "Voters Ideological self-placement",
+     ylim = c(0, 1),
+     bty = "n",
+     las = 1, xaxt="n", yaxt = "n",
+     )
+ticks = c(1, 4.1, 7)
+axis(1, at = round(ticks,1), labels = T)
+axis(2, at = c(0, 0.5, 1), tick = T)
+mtext(c("Mid-point"), 1, at = 4.1, 2, cex = 0.5)
+
+#add line
+lines(x = lib_con_self_range, 
+      y = p_mean_m2_only_ind, lwd = 2, col = "#0000ff")
+
+#add indifference point for ind with pol. knowledge m2_inc1
+points(x = can_mid_point, y = p_mean_m2_only_ind_mid, lwd = 2, col = "#0000ff", pch = 1, cex =1.5)
+
+segments(x0 = can_mid_point,
+         x1 = can_mid_point,
+         y0 = p_qu_m2_only_ind_mid[2],
+         y1 = p_qu_m2_only_ind_mid[1],
+         col = "#0000ff")
+segments(x0 = 0,
+         x1 = can_mid_point,
+         y0 = p_qu_m2_only_ind_mid[2],
+         y1 = p_qu_m2_only_ind_mid[2],
+         col = "#0000ff", lty = "dashed")
+segments(x0 = 0,
+         x1 = can_mid_point,
+         y0 = p_qu_m2_only_ind_mid[1],
+         y1 = p_qu_m2_only_ind_mid[1],
+         col = "#0000ff", lty = "dashed")
+
+#m2_inc
+plot(x = lib_con_self_range, 
+     y = p_mean_ind,
+     main = "All with Income",
+     type = "n",
+     ylab = "Probability of voting for Obama",
+     xlab = "Voters Ideological self-placement",
+     ylim = c(0, 1),
+     bty = "n",
+     las = 1, xaxt="n", yaxt = "n",
+     )
+ticks = c(1, 4.1, 7)
+axis(1, at = round(ticks,1), labels = T)
+axis(2, at = c(0, 0.5, 1), tick = T)
+mtext(c("Mid-point"), 1, at = 4.1, 2, cex = 0.5)
+lines(x = lib_con_self_range, 
+      y = p_mean_ind_m2_inc, lwd = 2, col = "#ff0000")
+
+#add indifference point for ind with pol. knowledge m2_inc0
+points(x = can_mid_point, y = p_mean_ind_m2_inc_mid, lwd = 2, col = "#ff0000", pch = 1, cex =1.5)
+
+segments(x0 = can_mid_point,
+         x1 = can_mid_point,
+         y0 = p_qu_ind_m2_inc_mid[2],
+         y1 = p_qu_ind_m2_inc_mid[1],
+         col = "#ff0000")
+segments(x0 = 0,
+         x1 = can_mid_point,
+         y0 = p_qu_ind_m2_inc_mid[2],
+         y1 = p_qu_ind_m2_inc_mid[2],
+         col = "#ff0000", lty = "dashed")
+segments(x0 = 0,
+         x1 = can_mid_point,
+         y0 = p_qu_ind_m2_inc_mid[1],
+         y1 = p_qu_ind_m2_inc_mid[1],
+         col = "#ff0000", lty = "dashed")
+```
+
+
+Figure \@ref(fig:single-plot9) shows the predicted point probability and uncertainty for all three models, when the voter is positioned exactly at *4.1*. Starting from the left, the base model (includes all respondents) yields a predicted point probability of *0.61* with uncertainty of *(0.53 - 0.7)* based on 95% CI. This excludes the indifference point of *0.5*. Thus we can not accept the pure spatial assumption regarding the knowledgeable Independents with an Ideology score of 4.1 based on this model. Including only Independents in the model (the blue line), we get a point probability *0.59* with uncertainty *(0.48 - 0.71)*. Based on this model, we can accept the pure spatial assumption (even though the 95% confidence interval is very wide because we have fewer respondents in this model). 
+
+```{r PredProbsModIncH2, echo=FALSE, fig.align='center'}
+#values for m2_inc with income == 1
+at_vals_m2_inc1 <- expand.grid(lib_con_self = 4.1, ind = 1,
+                       rep = 0, above_median_inc = seq(0, 1, by = 1),
+                       pol_knowledge = 1)
+
+## predict the prob for the mid-point m2_inc1
+pred_prob_mid_point_m2_inc1 <- augment(m2_inc, type.predict = 'response',newdata = at_vals_m2_inc1, se_fit = TRUE) %>% mutate(lower = .fitted - 1.96*.se.fit, upper = .fitted + 1.96*.se.fit) %>% mutate_if(is.numeric, ~ round(.,3))
+
+## make a table for the results
+pred_prob_mid_point_m2_inc1 %>%
+   kable(col.names = c("Self-placement", "Ind", "Rep",
+                       "Income","Pol. know", "Pred. Prob", "SE", 
+                      "Lower", "Upper"), align = 'c',
+         caption = "Predicted probabilities (Income model H2)")
+```
+
+Lastly, the red point (calculated only for knowledgeable Independents of above the median income) yields a point estimate of *0.56* and uncertainty range of *(0.45 -	0.66)*. It includes the indifference point of *0.5*. Thus, we cannot reject the pure spatial assumption about the knowledgeable Independents with an income above the median. However, as Table \@ref(tab:PredProbsModIncH2) shows knowledgeable Independents with Ideology score of 4.1 and an income under the median are not indifferent between the two candidates. Furthermore, when we control for race, we can observe that only White knowledgeable Independents are indifferent between the two candidates when positioned at the mid-point. Table \@ref(tab:PredProbsModRaceH2) reports these probabilities for the three different races.
+
+```{r PredProbsModRaceH2, echo=FALSE, fig.align='center'}
+## model with race H2
+m2_race <- glm(obama ~ lib_con_self + ind + rep + black + mixed + pol_knowledge + lib_con_self * pol_knowledge, data = dat, family = binomial(link = "logit"))
+
+## predicted probs for the models for H2
+
+#values for m2_race
+at_vals_m2_race <- expand.grid(lib_con_self = 4.1, ind = 1,
+                       rep = 0, black = seq(0, 1, by = 1),
+                       mixed = seq(0, 1, by = 1), pol_knowledge = 1)
+
+#  The augment function append the predicted probability of voting to every one of the combinations that are specified
+
+## predict the prob for the mid-point m2_base
+pred_prob_mid_point_m2_race <- augment(m2_race, type.predict = 'response',newdata = at_vals_m2_race, se_fit = TRUE) %>% mutate(lower = .fitted - 1.96*.se.fit, upper = .fitted + 1.96*.se.fit) %>% mutate_if(is.numeric, ~ round(.,3))
+
+## make a table for the results
+pred_prob_mid_point_m2_race %>%
+   kable(col.names = c("Self-placement", "Ind", "Rep",
+                       "Black", "Mixed", "Pol. know", "Pred. Prob", "SE", 
+                      "Lower", "Upper"), align = 'c',
+         caption = "Predicted probabilities (Race model H2)")
+```
+
+
+
+# Robustness check
+
+This section provide robustness checks for both models conducted for the two hypothesis. In these robustness checks, the same specifications are used as before, though, with different variables. I let the dependent variable to change for the race model of the first hypothesis. Vote choice in the 2008 election to the US House of Representatives is used instead of vote choice for Obama/McCain. 
+
+```{r, include=FALSE}
+## models for robustness check
+
+#unique(dat$vote_house)
+dat3 <- dat
+
+#H1
+# filter vote_house
+dat3 <- dat3 %>% filter(vote_house == 1 | vote_house == 2)
+dat3$vote_house <- ifelse(dat3$vote_house == 2, 0, dat3$vote_house)
+
+#race model
+m1_race_robust <- glm(vote_house ~ lib_con_self + black + mixed + ind + rep + lib_con_self * ind + lib_con_self * rep, data = dat3, family = binomial(link = "logit"))
+
+#H2
+##only independents
+m2_only_ind_robust <- glm(obama ~ lib_con_self + college_degree + lib_con_self * college_degree, data = subset(dat, party_id == 2), family = binomial(link = "logit"))
+
+## model with income
+m2_inc_robust <- glm(obama ~ lib_con_self + ind + rep + above_median_inc + college_degree + lib_con_self * college_degree, data = dat, family = binomial(link = "logit"))
+```
+
+
+
+
+```{r single-plot10, echo=FALSE, dpi=300, fig.align='center', fig.cap='Predicted Probabilities Race model H1 (Robustness Check)', fig.height=4}
+# plot predicted probs for the model with race (white vs black)
+
+#scenario for white
+# 1. get the coefficients and the variance-covariance matrix
+beta_hat <- coef(m1_race_robust)
+V_hat <- vcov(m1_race_robust)
+
+# 2. draw from a multivariate normal distribution n time N(beta_hat, V_hat)
+S <- mvrnorm(n = 1000, mu = beta_hat, Sigma = V_hat)
+
+# 3. choose interesting quantities of interest
+# a range for lib_con_self
+lib_con_self_range <- seq(min(dat$lib_con_self, na.rm = T), max(dat$lib_con_self, na.rm = T), length.out = 200) # range of values for lib_con_self
+
+# three scenarios (demo, ind, rep)
+demo_white <- cbind(1, lib_con_self_range, 0, 0, 0, 0, lib_con_self_range * 0, lib_con_self_range * 0) #scenario for demo
+ind_white <- cbind(1, lib_con_self_range, 0, 0, 1, 0, lib_con_self_range * 1, lib_con_self_range * 0) #scenario for ind
+rep_white <- cbind(1, lib_con_self_range, 0, 0, 0, 1, lib_con_self_range * 0, lib_con_self_range * 1) #scenario for rep
+
+
+# expected values
+Xbeta_demo_white <- S %*% t(demo_white)
+Xbeta_ind_white <- S %*% t(ind_white)
+Xbeta_rep_white <- S %*% t(rep_white)
+
+# Get expected values for p by plugging in the EVs into the response function
+p_sim_demo_white <- plogis(Xbeta_demo_white)
+p_sim_ind_white <- plogis(Xbeta_ind_white)
+p_sim_rep_white <- plogis(Xbeta_rep_white)
+
+# Calculate the mean and the quantiles
+p_mean_demo_white <- apply(p_sim_demo_white, 2, mean)
+p_qu_demo_white<- t(apply(p_sim_demo_white, 2, quantile, prob = c(0.025, 0.975)))
+
+p_mean_ind_white <- apply(p_sim_ind_white, 2, mean)
+p_qu_ind_white <- t(apply(p_sim_ind_white, 2, quantile, prob = c(0.025, 0.975)))
+
+p_mean_rep_white <- apply(p_sim_rep_white, 2, mean)
+p_qu_rep_white <- t(apply(p_sim_rep_white, 2, quantile, prob = c(0.025, 0.975)))
+
+# start with an empty plot
+par(mfrow = c(1,3))
+plot(x = lib_con_self_range, 
+     y = p_mean_demo_white,
+     main = "White",
+     type = "n",
+     ylim = c(0, 1),
+     ylab = "Prob. of voting for Democrat Candi. House of Repr.",
+     xlab = "Voters' self-placement",
+     bty = "n",
+     las = 1,
+     )
+
+# add line for demo
+lines(x = lib_con_self_range, 
+      y = p_mean_demo_white, lwd = 2, col = "#0000ff")
+
+# add line independent
+lines(x = lib_con_self_range, 
+      y = p_mean_ind_white, lwd = 2, col = "#00ff00")
+
+# add line for Republican
+lines(x = lib_con_self_range, 
+      y = p_mean_rep_white, lwd = 2, col = "#ff0000")
+
+
+# scenario for income above the mean black respondents
+demo_black <- cbind(1, lib_con_self_range, 1, 0, 0, 0, lib_con_self_range * 0, lib_con_self_range * 0) #scenario for demo
+ind_black <- cbind(1, lib_con_self_range, 1, 0, 1, 0, lib_con_self_range * 1, lib_con_self_range * 0) #scenario for ind
+rep_black <- cbind(1, lib_con_self_range, 1, 0, 0, 1, lib_con_self_range * 0, lib_con_self_range * 1) #scenario for rep
+
+
+# expected values
+Xbeta_demo_black <- S %*% t(demo_black)
+Xbeta_ind_black <- S %*% t(ind_black)
+Xbeta_rep_black <- S %*% t(rep_black)
+
+# Get expected values for p by plugging in the EVs into the response function
+p_sim_demo_black <- plogis(Xbeta_demo_black)
+p_sim_ind_black <- plogis(Xbeta_ind_black)
+p_sim_rep_black <- plogis(Xbeta_rep_black)
+
+# Calculate the mean and the quantiles
+p_mean_demo_black <- apply(p_sim_demo_black, 2, mean)
+p_qu_demo_black <- t(apply(p_sim_demo_black, 2, quantile, prob = c(0.025, 0.975)))
+
+p_mean_ind_black <- apply(p_sim_ind_black, 2, mean)
+p_qu_ind_black <- t(apply(p_sim_ind_black, 2, quantile, prob = c(0.025, 0.975)))
+
+p_mean_rep_black <- apply(p_sim_rep_black, 2, mean)
+p_qu_rep_black <- t(apply(p_sim_rep_black, 2, quantile, prob = c(0.025, 0.975)))
+
+# start with an empty plot
+plot(x = lib_con_self_range, 
+     y = p_mean_demo_black,
+     main = "Black",
+     type = "n",
+     ylim = c(0, 1),
+     ylab = "",
+     xlab = "Voters' self-placement",
+     bty = "n",
+     las = 1,
+     )
+
+# add line for demo
+lines(x = lib_con_self_range, 
+      y = p_mean_demo_black, lwd = 2, col = "#0000ff")
+
+# add line independent
+lines(x = lib_con_self_range, 
+      y = p_mean_ind_black, lwd = 2, col = "#00ff00")
+
+# add line for Republican
+lines(x = lib_con_self_range, 
+      y = p_mean_rep_black, lwd = 2, col = "#ff0000")
+
+
+# scenario for income above the mean mexed respondents
+demo_mixed <- cbind(1, lib_con_self_range, 0, 1, 0, 0, lib_con_self_range * 0, lib_con_self_range * 0) #scenario for demo
+ind_mixed <- cbind(1, lib_con_self_range, 0, 1, 1, 0, lib_con_self_range * 1, lib_con_self_range * 0) #scenario for ind
+rep_mixed <- cbind(1, lib_con_self_range, 0, 1, 0, 1, lib_con_self_range * 0, lib_con_self_range * 1) #scenario for rep
+
+
+# expected values
+Xbeta_demo_mixed <- S %*% t(demo_mixed)
+Xbeta_ind_mixed <- S %*% t(ind_mixed)
+Xbeta_rep_mixed <- S %*% t(rep_mixed)
+
+# Get expected values for p by plugging in the EVs into the response function
+p_sim_demo_mixed <- plogis(Xbeta_demo_mixed)
+p_sim_ind_mixed <- plogis(Xbeta_ind_mixed)
+p_sim_rep_mixed <- plogis(Xbeta_rep_mixed)
+
+# Calculate the mean and the quantiles
+p_mean_demo_mixed <- apply(p_sim_demo_mixed, 2, mean)
+p_qu_demo_mixed <- t(apply(p_sim_demo_mixed, 2, quantile, prob = c(0.025, 0.975)))
+
+p_mean_ind_mixed <- apply(p_sim_ind_mixed, 2, mean)
+p_qu_ind_mixed <- t(apply(p_sim_ind_mixed, 2, quantile, prob = c(0.025, 0.975)))
+
+p_mean_rep_mixed <- apply(p_sim_rep_mixed, 2, mean)
+p_qu_rep_mixed <- t(apply(p_sim_rep_mixed, 2, quantile, prob = c(0.025, 0.975)))
+
+# start with an empty plot
+plot(x = lib_con_self_range, 
+     y = p_mean_demo_mixed,
+     main = "Mixed",
+     type = "n",
+     ylim = c(0, 1),
+     ylab = "",
+     xlab = "Voters' self-placement",
+     bty = "n",
+     las = 1,
+     )
+
+# add line for demo
+lines(x = lib_con_self_range, 
+      y = p_mean_demo_mixed, lwd = 2, col = "#0000ff")
+
+
+# add line independent
+lines(x = lib_con_self_range, 
+      y = p_mean_ind_mixed, lwd = 2, col = "#00ff00")
+
+
+# add line for Republican
+lines(x = lib_con_self_range, 
+      y = p_mean_rep_mixed, lwd = 2, col = "#ff0000")
+
+legend("bottomleft", c("Democrat", "Independent", "Republican"), lty = c("solid", "solid"),
+       pch = "", col = c("#0000ff", "#00ff00", "#ff0000"), bty = "n", cex = 0.8)
+```
+Figure \@ref(fig:single-plot10) plots the predicted probabilities of voting for a Democrat candidate in the House of Representatives. The points of indifference for White Democrats is 12; for White Independents it is 4.3; and for White Republicans it is 0.23. Thus, these results are robust and support the first hypothesis. In contrast to the results for the presidential election, we observe that Black Independents are also, like White Independents, driven to a greater degree by Ideology. The point of indifference for Black Independents is also closer to the mid-point of the self-placement scale than is that of Black Democrats and Republicans. 
+
+
+
+```{r indifference points ro robust model H1, include=FALSE}
+# points of indifference in robust model
+# for democrats
+white_demo_ind_point <- (coef(m1_race_robust)[1] + coef(m1_race_robust)[3] * 0 + coef(m1_race_robust)[4] * 0 + coef(m1_race_robust)[5] * 0 + coef(m1_race_robust)[6] * 0 ) / (-coef(m1_race_robust)[2] - coef(m1_race_robust)[7] * 0 - coef(m1_race_robust)[8] * 0)
+
+# for independents
+white_ind_ind_point <- (coef(m1_race_robust)[1] + coef(m1_race_robust)[3] * 0 + coef(m1_race_robust)[4] * 0 + coef(m1_race_robust)[5] * 1 + coef(m1_race_robust)[6] * 0 ) / (-coef(m1_race_robust)[2] - coef(m1_race_robust)[7] * 1 - coef(m1_race_robust)[8] * 0)
+
+# for Republicans
+white_rep_ind_point <- (coef(m1_race_robust)[1] + coef(m1_race_robust)[3] * 0 + coef(m1_race_robust)[4] * 0 + coef(m1_race_robust)[5] * 0 + coef(m1_race_robust)[6] * 1 ) / (-coef(m1_race_robust)[2] - coef(m1_race_robust)[7] * 0 - coef(m1_race_robust)[8] * 1)
+
+white_demo_ind_point
+white_ind_ind_point
+white_rep_ind_point
+```
+
+
+
+
+```{r single-plot11, echo=FALSE, dpi=300,out.width='100%',fig.align='center', fig.cap='Predicted Probabilities H2 (Robustness check)', fig.width=5, fig.height=4}
+## predicted probs for the Only Independent model (robustness check)
+# predicted probs for m2_only_ind
+beta_hat_m2_only_ind <- coef(m2_only_ind_robust)
+V_hat_m2_only_ind <- vcov(m2_only_ind_robust)
+
+# 2. draw from a multivariate normal distribution n time N(beta_hat, V_hat)
+S_m2_only_ind <- mvrnorm(n = 1000, mu = beta_hat_m2_only_ind, Sigma = V_hat_m2_only_ind)
+
+# 3. choose interesting quantities of interest
+lib_con_self_range <- seq(min(dat$lib_con_self, na.rm = T), max(dat$lib_con_self, na.rm = T), length.out = 200) # range of values for lib_con_self
+
+ind_m2_only_ind <- cbind(1, lib_con_self_range, 1, lib_con_self_range * 1) #scenario for ind
+
+# expected values
+Xbeta_m2_only_ind <- S_m2_only_ind %*% t(ind_m2_only_ind)
+
+# Get expected values for p by plugging in the EVs into the response function
+p_sim_m2_only_ind <- plogis(Xbeta_m2_only_ind)
+
+# Calculate the mean and the quantiles
+p_mean_m2_only_ind <- apply(p_sim_m2_only_ind, 2, mean)
+p_qu_m2_only_ind <- t(apply(p_sim_m2_only_ind, 2, quantile, prob = c(0.025, 0.975)))
+
+## predicted probabilities for model for H2 with income added
+beta_hat_m2_inc <- coef(m2_inc_robust)
+V_hat_m2_inc<- vcov(m2_inc_robust)
+
+# 2. draw from a multivariate normal distribution n time N(beta_hat, V_hat)
+S_m2_inc <- mvrnorm(n = 1000, mu = beta_hat_m2_inc, Sigma = V_hat_m2_inc)
+
+# 3. choose interesting quantities of interest
+lib_con_self_range <- seq(min(dat$lib_con_self, na.rm = T), max(dat$lib_con_self, na.rm = T), length.out = 200) # range of values for lib_con_self
+
+ind_m2_inc <- cbind(1, lib_con_self_range, 1, 0, 1, 1, lib_con_self_range * 1)
+
+# expected values
+Xbeta_ind_m2_inc <- S_m2_inc %*% t(ind_m2_inc)
+
+# Get expected values for p by plugging in the EVs into the response function
+p_sim_ind_m2_inc <- plogis(Xbeta_ind_m2_inc)
+
+# Calculate the mean and the quantiles
+p_mean_ind_m2_inc <- apply(p_sim_ind_m2_inc, 2, mean)
+p_qu_ind_m2_inc <- t(apply(p_sim_ind_m2_inc, 2, quantile, prob = c(0.025, 0.975)))
+
+##find the indifference point for independent when positioned at mid-point
+# first find the average for candidates' mid-points
+can_mid_point <- round((mean(dat$lib_con_obama, na.rm = T) + mean(dat$lib_con_mccain, na.rm = T)) /2, 1)
+
+## make scenario for the mid-point only-ind
+ind_m2_only_ind_mid <- cbind(1, can_mid_point, 1, can_mid_point * 1) #scenario for ind
+
+# expected values
+Xbeta_m2_only_ind_mid <- S_m2_only_ind %*% t(ind_m2_only_ind_mid)
+
+# Get expected values for p by plugging in the EVs into the response function
+p_sim_m2_only_ind_mid <- plogis(Xbeta_m2_only_ind_mid)
+
+# Calculate the mean and the quantiles
+p_mean_m2_only_ind_mid <- apply(p_sim_m2_only_ind_mid, 2, mean)
+p_qu_m2_only_ind_mid <- t(apply(p_sim_m2_only_ind_mid, 2, quantile, prob = c(0.025, 0.975)))
+
+## make scenario for the mid-point m2_inc_robust
+ind_m2_inc_mid <- cbind(1, can_mid_point, 1, 0, 1, 1, can_mid_point * 1)
+
+# expected values
+Xbeta_ind_m2_inc_mid <- S_m2_inc %*% t(ind_m2_inc_mid)
+
+# Get expected values for p by plugging in the EVs into the response function
+p_sim_ind_m2_inc_mid <- plogis(Xbeta_ind_m2_inc_mid)
+
+# Calculate the mean and the quantiles
+p_mean_ind_m2_inc_mid <- apply(p_sim_ind_m2_inc_mid, 2, mean)
+p_qu_ind_m2_inc_mid <- t(apply(p_sim_ind_m2_inc_mid, 2, quantile, prob = c(0.025, 0.975)))
+
+## define the scenario (knowledgeable independents should have 0.5 prob when positioned at 4.1 self-placement)
+
+# start with an empty plot
+par(mfrow = c(1, 2))
+#m2_only_ind
+plot(x = lib_con_self_range, 
+     y = p_mean_ind,
+     main = "Only Independens",
+     cex.main = 1,
+     type = "n",
+     ylab = "Prob. of voting for Democrat Candi. House of Repr.",
+     cex.lab = 0.8,
+     xlab = "Voters Ideological self-placement",
+     ylim = c(0, 1),
+     bty = "n",
+     las = 1, xaxt="n", yaxt = "n",
+     )
+ticks = c(1, 4.1, 7)
+axis(1, at = round(ticks,1), labels = T)
+axis(2, at = c(0, 0.5, 1), tick = T)
+mtext(c("Mid-point"), 1, at = 4.1, 2, cex = 0.5)
+
+#add line
+lines(x = lib_con_self_range, 
+      y = p_mean_m2_only_ind, lwd = 2, col = "#0000ff")
+
+#add indifference point for ind with pol. knowledge m2_only_ind
+points(x = can_mid_point, y = p_mean_m2_only_ind_mid, lwd = 2, col = "#0000ff", pch = 1, cex =1.5)
+
+segments(x0 = can_mid_point,
+         x1 = can_mid_point,
+         y0 = p_qu_m2_only_ind_mid[2],
+         y1 = p_qu_m2_only_ind_mid[1],
+         col = "#0000ff")
+segments(x0 = 0,
+         x1 = can_mid_point,
+         y0 = p_qu_m2_only_ind_mid[2],
+         y1 = p_qu_m2_only_ind_mid[2],
+         col = "#0000ff", lty = "dashed")
+segments(x0 = 0,
+         x1 = can_mid_point,
+         y0 = p_qu_m2_only_ind_mid[1],
+         y1 = p_qu_m2_only_ind_mid[1],
+         col = "#0000ff", lty = "dashed")
+
+#m2_inc
+plot(x = lib_con_self_range, 
+     y = p_mean_ind,
+     main = "All with Income",
+     cex.main = 1,
+     cex.lab = 0.8,
+     type = "n",
+     ylab = "",
+     xlab = "Voters Ideological self-placement",
+     ylim = c(0, 1),
+     bty = "n",
+     las = 1, xaxt="n", yaxt = "n",
+     )
+ticks = c(1, 4.1, 7)
+axis(1, at = round(ticks,1), labels = T)
+axis(2, at = c(0, 0.5, 1), tick = T)
+mtext(c("Mid-point"), 1, at = 4.1, 2, cex = 0.5)
+lines(x = lib_con_self_range, 
+      y = p_mean_ind_m2_inc, lwd = 2, col = "#ff0000")
+
+#add indifference point for ind with pol. knowledge m2_inc0
+points(x = can_mid_point, y = p_mean_ind_m2_inc_mid, lwd = 2, col = "#ff0000", pch = 1, cex =1.5)
+
+segments(x0 = can_mid_point,
+         x1 = can_mid_point,
+         y0 = p_qu_ind_m2_inc_mid[2],
+         y1 = p_qu_ind_m2_inc_mid[1],
+         col = "#ff0000")
+segments(x0 = 0,
+         x1 = can_mid_point,
+         y0 = p_qu_ind_m2_inc_mid[2],
+         y1 = p_qu_ind_m2_inc_mid[2],
+         col = "#ff0000", lty = "dashed")
+segments(x0 = 0,
+         x1 = can_mid_point,
+         y0 = p_qu_ind_m2_inc_mid[1],
+         y1 = p_qu_ind_m2_inc_mid[1],
+         col = "#ff0000", lty = "dashed")
+```
+To check the robustness of the second hypothesis, I change the political knowledge variable to college degree in the two models (Only Independent and the model with income as control). The college degree is coded 1 if a respondent has a four year college degree; and coded 0 otherwise. Figure \@ref(fig:single-plot11) plots the predicted probability lines and point estimates for the robustness estimation. We can observe that both of the models don't hold anymore within the 95% confidence interval. 
+
+# Conclusion
+
+First, the current paper examines whether the effect of ideological self-placement is stronger for Independent voters than for Democrats or Republicans (whether party ID moderates the effect of ideology). I find evidence that this assumption is, in particular, true about the White Independents. Black and Mixed Independents are not more indifferent between two presidential candidates (one Democrat, the other Republican) than the Black and Mixed Republicans. This implies that party identification only moderates the effect of ideology on the vote choice for white Republicans and all Democrats based on the estimation of this paper. However, ideology has a greater effect for all Independents in the election of the US House of Representatives. I find evidence that this group is more indifferent in their vote choice between two Democrat and Republican Candidates than are Democrats or Republicans. 
+
+Second, I investigate whether ideology has a pure spatial effect among knowledgeable Independents. I find evidence supporting this assumption, in particular, for White knowledgeable Independents and knowledgeable Independents above the national median income in the presidential elections. However, the pure spatial effect of ideology vanishes when we look at the elections for the House of Representatives. 
+
+The moderating effect of party identification can further be studied, particularly in other parts of the globe than in the US. I believe that USA are a very polarized country in terms of party belonging, and this effect may be overemphasized. Also, multi-party systems need to be taken into account.
+
+
+
+
+
+
+
+
+
+
+
